@@ -5,8 +5,8 @@ from functools import partial
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-tokenized_path="./data/tokenized/"
-batch_size=32
+tokenized_path="./data/tokenized"
+batch_size=256
 train,valid,test,vocab,Index,PAD,EOS,SOS,UKN,max_size = read_tokenized_data(tokenized_path)
 
 #Create Datasets
@@ -26,12 +26,14 @@ ValidLoader=DataLoader(valid_ds,batch_size=batch_size,collate_fn=cl)
 embedding_dim=100
 hidden_size=256
 vocab_size=len(vocab)
-device="cpu"
-epochs=1
+device="cuda"
+epochs=2
+lr=0.001
 # create Transformer
 model=TransformerModel(embedding_dim=embedding_dim,
                  hidden_size=hidden_size,
-                 vocab_size=vocab_size)
+                 vocab_size=vocab_size,
+                 device=device)
 
 # compile model
 metric=accuracy_score
@@ -39,14 +41,12 @@ optimizer="adam"
 loss_fn=nn.CrossEntropyLoss()
 model.Compile(metric=metric,
               optimizer=optimizer,
-              loss_fn=loss_fn
+              loss_fn=loss_fn,
+              lr=lr
               )
 
 #start train function
 
 model.Train(trainLoader=trainLoader,
             validLoader=ValidLoader,
-            epochs=1)
-
-
-
+            epochs=epochs)

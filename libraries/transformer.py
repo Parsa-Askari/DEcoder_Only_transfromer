@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from .data import PositionalEncoding
+# from .data import PositionalEncoding
 from tqdm.auto import tqdm
 class Decoder(nn.Module):
     def __init__(self,embedding_dim,hidden_size):
@@ -56,7 +56,7 @@ class Decoder(nn.Module):
     def clear_cache(self):
         del self.value_cache[:]
         del self.key_cache[:]
-
+        torch.cuda.empty_cache()
 class TransformerModel(nn.Module):
     def __init__(self,embedding_dim,hidden_size,vocab_size,device="cpu"):
         super(TransformerModel,self).__init__()
@@ -94,67 +94,87 @@ class TransformerModel(nn.Module):
         """
             trainLoader : returns x and y with shape (batch_size,embedding_dim)
         """
-        with tqdm(total=epochs) as main_pbar:
-            for ep in tqdm(range(epochs)):
-                with tqdm(total=len(trainLoader)) as pbar:
-                    for x_batch,y_batch in trainLoader:
-                        x_batch=x_batch.to(self.device)
-                        y_batch=y_batch.to(self.device)
-                        seq_len=x_batch.shape[-1]
-                        batch_size=x_batch.shape[0]
-                        embedded_input=self.embedding(x_batch).reshape(seq_len,-1,self.embedding_dim)
-                        position_encodings=PositionalEncoding(seq_len=seq_len,
-                                                            dim=self.embedding_dim,
-                                                            batch_size=batch_size)
-                        # print(x_batch.shape)
-                        # print(position_encodings.shape)
-                        # print(embedded_input.shape)
-                        encoded_input=embedded_input+position_encodings # (seq_len,batch_size,embedding_dim)
-                        loss=0
-                        acc=0
-                        for i in range(seq_len):
-                            token=encoded_input[i] # (batch_size,embedding_dim)
-                            logits=self.decoder(token) # (batch_size,embedding_dim)
-                            logits=self.linear(token) # (batch_size,vocab_size)
-                            y_pred=self.softmax(logits) # (batch_size,vocab_size)
-                            loss+=self.loss_fn(input=y_pred,target=y_batch[:,i].reshape(-1))
-                            y_hat=self.predict(y_pred)
-                            acc+=self.metric(y_true=y_batch[:,i].reshape(-1).detach().cpu().numpy(),
-                                            y_pred=y_hat.cpu().numpy())
-                        loss=loss/batch_size
-                        acc=acc/seq_len
-                        loss.backward()
-                        self.step_optimizer()
+        for ep in tqdm(range(epochs)):
+            ep_losses=[]
+            ep_accs=[]
+            with tqdm(total=len(trainLoader)) as pbar:
+                for x_batch,y_batch in trainLoader:
 
-                        pbar.set_postfix({"Epoch":ep,"TrainLoss":loss.detach().item(),"TrainAcc":acc,
-                                    "lr":self.Optimizer.param_groups[0]['lr']})
-                        pbar.update(1)
-                valid_loss,acc_valid=self.Evaluation(validLoader)
-                main_pbar.set_postfix({"Epoch":ep,"ValidLoss":valid_loss.detach().item(),"ValidAcc":acc_valid})
-                main_pbar.update(1)
-                self.step_scheduler()
+                    x_batch=x_batch.to(self.device)
+                    y_batch=y_batch.to(self.device)
+                    seq_len=x_batch.shape[-1]
+                    batch_size=x_batch.shape[0]
+                    embedded_input=self.embedding(x_batch).reshape(seq_len,-1,self.embedding_dim)
+                    position_encodings=PositionalEncoding(seq_len=seq_len,
+                                                        dim=self.embedding_dim,
+                                                        batch_size=batch_size).to(self.device)
+                    # print(x_batch.shape)
+                    # print(position_encodings.shape)
+                    # print(embedded_input.shape)
+                    encoded_input=embedded_input+position_encodings # (seq_len,batch_size,embedding_dim)
+                    loss=0
+                    acc=0
+                    for i in range(seq_len):
+                        token=encoded_input[i] # (batch_size,embedding_dim)
+                        logits=self.decoder(token) # (batch_size,embedding_dim)
+                        logits=self.linear(token) # (batch_size,vocab_size)
+#                             y_pred=self.softmax(logits) # (batch_size,vocab_size)
+                        y_pred=logits
+                        loss+=self.loss_fn(input=y_pred,target=y_batch[:,i].reshape(-1))
+                        y_hat=self.predict(y_pred)
+                        acc+=self.metric(y_true=y_batch[:,i].reshape(-1).detach().cpu().numpy(),
+                                        y_pred=y_hat.cpu().numpy())
+                    loss=loss/batch_size
+                    acc=acc/seq_len
+                    loss.backward()
+                    self.step_optimizer()
+                    ep_losses.append(loss.detach().item())
+                    ep_accs.append(acc)
+                    pbar.set_postfix({"Epoch":ep,"TrainLoss":np.mean(ep_losses),"TrainAcc":np.mean(ep_accs),
+                                "lr":self.Optimizer.param_groups[0]['lr']})
+                    pbar.update(1)
+
+                    self.decoder.clear_cache()
+                    del position_encodings
+                    torch.cuda.empty_cache()
+            self.Evaluation(validLoader)
+
+            self.step_scheduler()
         
     @torch.no_grad()
     def Evaluation(self,dataloader):
-        for x_batch,y_batch in tqdm(dataloader):
-            x_batch=x_batch.to(self.device)
-            y_batch=y_batch.to(self.device)
-            seq_len=x_batch.shape[-1]
-            batch_size=x_batch.shape[0]
-            embedded_imput=self.embedding(x_batch).reshape(self.embedding_dim,-1,seq_len)
-            position_encodings=position_encodings(seq_len=seq_len,
-                                                dim=self.embedding_dim,
-                                                batch_size=batch_size)
-            encoded_imput=embedded_imput+position_encodings # (seq_len,batch_size,embedding_dim)
-            loss=0
-            acc=0
-            for i in range(seq_len):
-                token=encoded_imput[i] # (batch_size,embedding_dim)
-                logits=self.decoder(token) # (batch_size,embedding_dim)
-                logits=self.linear(token) # (batch_size,vocab_size)
-                y_pred=self.softmax(logits) # (batch_size,vocab_size)
-                loss+=self.loss_fn(input=y_pred,target=y_batch[:,i].reshape(-1))
-                y_hat=self.predict(y_pred)
-                acc+=self.metric(y_true=y_batch[:,i].reshape[-1].detach().cpu(),
-                                y_pred=y_hat.cpu())
-        return loss/batch_size , acc/batch_size
+        ep_losses=[]
+        ep_accs=[]
+        with tqdm(total=len(dataloader)) as pbar:
+            for x_batch,y_batch in dataloader:
+                
+                x_batch=x_batch.to(self.device)
+                y_batch=y_batch.to(self.device)
+                seq_len=x_batch.shape[-1]
+                batch_size=x_batch.shape[0]
+                embedded_imput=self.embedding(x_batch).reshape(seq_len,-1,self.embedding_dim)
+                position_encodings=PositionalEncoding(seq_len=seq_len,
+                                                    dim=self.embedding_dim,
+                                                    batch_size=batch_size).to(self.device)
+                encoded_imput=embedded_imput+position_encodings # (seq_len,batch_size,embedding_dim)
+                loss=0
+                acc=0
+                for i in range(seq_len):
+                    token=encoded_imput[i] # (batch_size,embedding_dim)
+                    logits=self.decoder(token) # (batch_size,embedding_dim)
+                    logits=self.linear(token) # (batch_size,vocab_size)
+    #                 y_pred=self.softmax(logits) # (batch_size,vocab_size)
+                    y_pred=logits
+                    loss+=self.loss_fn(input=y_pred,target=y_batch[:,i].reshape(-1))
+                    y_hat=self.predict(y_pred)
+                    acc+=self.metric(y_true=y_batch[:,i].reshape(-1).detach().cpu(),
+                                    y_pred=y_hat.cpu())
+                loss=loss/batch_size
+                acc=acc/seq_len
+                ep_losses.append(loss.detach().cpu().item())
+                ep_accs.append(acc)
+                self.decoder.clear_cache()
+                del position_encodings
+                torch.cuda.empty_cache()
+                pbar.set_postfix({"ValidLoss":np.mean(ep_losses),"ValidAcc":np.mean(ep_accs)})
+                pbar.update(1)
