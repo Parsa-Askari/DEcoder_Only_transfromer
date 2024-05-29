@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-# from .data import PositionalEncoding
+from .data import PositionalEncoding
 from tqdm.auto import tqdm
 class Decoder(nn.Module):
     def __init__(self,embedding_dim,hidden_size):
