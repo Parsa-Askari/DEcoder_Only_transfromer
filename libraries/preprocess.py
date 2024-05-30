@@ -4,16 +4,7 @@ import regex as re
 import argparse
 from tqdm import tqdm
 import os
-# parser = argparse.ArgumentParser(description='preprocesseing')
-# def str2bool(v):
-#     return v.lower()=="true"
-# parser.add_argument('--daily', default=True, type=str2bool, help='include dailydialog dataset')
-# parser.add_argument('--daily_path', default="./data/dailydialog/processed/", type=str, help='path to dailydialog dataset output')
-# parser.add_argument('--empathy', default=True, type=str2bool, help='include empatheticdialogues dataset')
-# parser.add_argument('--empathy_path', default="./data/empatheticdialogues/processed/", type=str, help='path to empatheticdialogues dataset output')
-# parser.add_argument('--combine', default=True, type=str2bool, help='combine two datasets')
-# parser.add_argument('--combine_path', default="./data/full/", type=str, help='combine two datasets')
-# args = parser.parse_args()
+
 
 def cleaner(text):
     text=text.lower()
